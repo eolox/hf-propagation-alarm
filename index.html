@@ -3,176 +3,322 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>HF & VHF Propagation Monitor & Alarm</title>
+  <title>Propagation Monitor — JN23IU</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:20px;background:#0b1020;color:#e6eef8}
-    .card{background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-bottom:10px}
-    h1{font-size:18px;margin:0 0 6px}
-    .grid{display:grid;grid-template-columns:1fr 300px;gap:10px}
-    .bands{display:grid;grid-template-columns:repeat(auto-fill, minmax(70px, 1fr));gap:6px;margin-top:8px}
-    .band{padding:6px;border-radius:6px;background:rgba(255,255,255,0.02);text-align:center;font-size:11px;cursor:pointer;min-width:70px}
-    .open{border:2px solid #00ff99}
-    .closed{opacity:0.6}
-    label{display:block;margin-bottom:4px;font-size:12px}
-    button{padding:6px 10px;border-radius:6px;border:none;background:#0ea5a2;color:#012;cursor:pointer;font-size:12px}
-    small{color:#a8c0d8;font-size:11px}
-    .muted{opacity:0.6;font-size:11px}
+    :root{--bg:#0b1020;--card:rgba(255,255,255,0.03);--accent:#0ea5a2}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:12px;background:var(--bg);color:#e6eef8}
+    .top{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    h1{font-size:16px;margin:0}
+    .card{background:var(--card);padding:8px;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,0.6)}
+    .layout{display:grid;grid-template-columns:1fr 320px;gap:10px}
+    .bands{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+    .band{padding:6px;border-radius:6px;text-align:center;font-size:11px;cursor:pointer;min-width:64px;border:1px solid rgba(255,255,255,0.04)}
+    .band .name{font-weight:600;font-size:12px}
+    .band .state{font-size:11px}
+    .controls{display:flex;gap:6px;flex-wrap:wrap}
+    .btn{padding:4px 8px;border-radius:6px;border:none;background:var(--accent);color:#012;cursor:pointer;font-size:12px}
+    .small{font-size:12px;color:#a8c0d8}
+    #map{width:100%;height:160px;background:#07101a;border-radius:6px}
+    .legend{display:flex;gap:6px;align-items:center}
+    .grad{height:12px;border-radius:4px;flex:1;background:linear-gradient(90deg, #ff4d4d, #ffd54d, #7bff9c);}/* red->yellow->green */
+    .muted{color:#8ea1bb;font-size:12px}
+    .panel-row{display:flex;gap:8px;margin-top:6px}
+    .panel{flex:1}
+    .override{display:flex;gap:4px;justify-content:center;margin-top:6px}
+    input[type=number], input[type=text]{width:100%;padding:6px;border-radius:6px;border:1px solid #13202a;background:#071218;color:#e6eef8}
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>HF & VHF Propagation Monitor & Alarm</h1>
-    <p>Monitors NOAA SWPC indices and estimates whether amateur bands are likely open. Enable per-band alarms and desktop notifications.</p>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
-      <label><input type="checkbox" id="notifyPermission"> Notifications & audio</label>
-      <button id="testAlarm">Test alarm</button>
+  <div class="top">
+    <div>
+      <h1 class="card">Propagation Monitor — QTH <strong>JN23IU</strong></h1>
+      <div class="small">Estimates include a simple MUF calculation for JN23IU; use as quick guide only.</div>
+    </div>
+    <div style="margin-left:auto" class="card" id="localTimePanel">
+      <div id="localTime">Local: --:--:--</div>
+      <div id="solarData" class="small muted">SFI: -- Kp: -- MUF: -- MHz</div>
     </div>
   </div>
 
-  <div class="grid">
+  <div class="layout">
     <div>
       <div class="card">
-        <h2>Live Indices</h2>
-        <div id="indices">Loading...</div>
-      </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Band status</strong><div class="small muted">Click tile to manual toggle; use overrides below.</div></div>
+          <div class="legend"><div class="small">Bad</div><div class="grad"></div><div class="small">Good</div></div>
+        </div>
 
-      <div class="card">
-        <h2>Bands</h2>
         <div class="bands" id="bands"></div>
+
+        <div class="panel-row">
+          <div class="panel card">
+            <div><strong>Manual overrides</strong></div>
+            <div class="small muted">Select a band and force Open / Closed / Auto</div>
+            <div style="margin-top:6px" id="selectedBand" class="small muted">Selected: none</div>
+            <div class="override">
+              <button class="btn" id="forceOpen">Force Open</button>
+              <button class="btn" id="forceClosed">Force Closed</button>
+              <button class="btn" id="forceAuto">Auto</button>
+            </div>
+          </div>
+
+          <div class="panel card">
+            <div><strong>Map (day/night)</strong></div>
+            <canvas id="map"></canvas>
+          </div>
+        </div>
+
       </div>
 
-      <div class="card">
-        <h2>Log</h2>
-        <div id="log" style="max-height:200px;overflow:auto;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.12);padding:6px;border-radius:4px"></div>
+      <div class="card" style="margin-top:8px">
+        <div><strong>Log</strong></div>
+        <div id="log" style="max-height:160px;overflow:auto;font-family:monospace;font-size:11px;background:rgba(0,0,0,0.06);padding:6px;border-radius:4px;margin-top:6px"></div>
       </div>
     </div>
 
     <div>
       <div class="card">
-        <h2>Controls</h2>
-        <label>Polling interval (s): <input id="interval" type="number" value="60" min="10" style="width:60px" /></label>
-        <label>Enable auto alarms: <input id="autoAlarm" type="checkbox" checked /></label>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Controls</strong></div>
+          <div class="small muted">Polling interval (s)</div>
+        </div>
+        <div style="margin-top:6px"><input id="interval" type="number" value="60" min="10" /></div>
+
+        <div style="margin-top:8px"><label class="small">Auto alarms <input id="autoAlarm" type="checkbox" checked /></label></div>
+
+        <div style="margin-top:8px">
+          <div class="small"><strong>MUF estimate model</strong></div>
+          <div class="small muted">Simple empirical estimate based on SFI and local latitude. Not VOACAP.</div>
+          <div style="margin-top:6px"><label>Latitude: <input id="lat" type="number" value="43.5" step="0.1" /></label></div>
+        </div>
+
+        <div style="margin-top:8px">
+          <div class="small"><strong>SFI tiers</strong></div>
+          <div class="small muted">Low &lt;70; Moderate 70–120; High &gt;120</div>
+        </div>
+
+        <div style="margin-top:8px">
+          <div class="small"><strong>Kp storm suppression</strong></div>
+          <div class="small muted">If Kp &ge;6, HF high-band suppression; &ge;8 severe.</div>
+        </div>
+
       </div>
 
-      <div class="card">
-        <h2>API status</h2>
-        <div id="apiStatus">Not checked yet</div>
+      <div class="card" style="margin-top:8px">
+        <div><strong>Indices</strong></div>
+        <div id="indices" class="small muted" style="margin-top:6px">Kp: -- SFI: -- MUF: --</div>
       </div>
+
     </div>
   </div>
 
-  <script>
-    const endpoints = {
-      planetaryK: 'https://services.swpc.noaa.gov/json/planetary_k_index_1m.json',
-      solarRadio: 'https://services.swpc.noaa.gov/json/solar-radio-flux.json'
-    };
+<script>
+// Endpoints
+const endpoints = {
+  planetaryK: 'https://services.swpc.noaa.gov/json/planetary_k_index_1m.json',
+  solarRadio: 'https://services.swpc.noaa.gov/json/solar-radio-flux.json'
+};
 
-    const bands = [
-      {name:'160m', key:'160', enabled:true},
-      {name:'80m', key:'80', enabled:true},
-      {name:'60m', key:'60', enabled:true},
-      {name:'40m', key:'40', enabled:true},
-      {name:'30m', key:'30', enabled:true},
-      {name:'20m', key:'20', enabled:true},
-      {name:'17m', key:'17', enabled:true},
-      {name:'15m', key:'15', enabled:true},
-      {name:'12m', key:'12', enabled:true},
-      {name:'10m', key:'10', enabled:true},
-      {name:'6m', key:'6', enabled:true},
-      {name:'4m', key:'4', enabled:true},
-      {name:'2m', key:'2', enabled:true},
-      {name:'70cm', key:'70cm', enabled:true}
-    ];
+// Bands: include LF/MF/HF/VHF/UHF common ham allocations (keys are short ids)
+const bands = [
+  {name:'2200m', key:'136k', band:'LF'},
+  {name:'630m', key:'472k', band:'LF'},
+  {name:'160m', key:'160m', band:'HF'},
+  {name:'80m', key:'80m', band:'HF'},
+  {name:'60m', key:'60m', band:'HF'},
+  {name:'40m', key:'40m', band:'HF'},
+  {name:'30m', key:'30m', band:'HF'},
+  {name:'20m', key:'20m', band:'HF'},
+  {name:'17m', key:'17m', band:'HF'},
+  {name:'15m', key:'15m', band:'HF'},
+  {name:'12m', key:'12m', band:'HF'},
+  {name:'10m', key:'10m', band:'HF'},
+  {name:'6m', key:'6m', band:'VHF'},
+  {name:'4m', key:'4m', band:'VHF'},
+  {name:'2m', key:'2m', band:'VHF'},
+  {name:'70cm', key:'70cm', band:'UHF'},
+  {name:'23cm', key:'23cm', band:'UHF'}
+];
 
-    const bandsDiv = document.getElementById('bands');
-    bands.forEach(b=>{
-      const el = document.createElement('div'); el.className='band closed'; el.id='band-'+b.key;
-      el.innerHTML = `<strong>${b.name}</strong><div id="band-${b.key}-state">Unknown</div><label><input type="checkbox" class="alarmToggle" data-key="${b.key}" ${b.enabled? 'checked':''}/> Alarm</label>`;
-      bandsDiv.appendChild(el);
-    });
+// State
+const state = {
+  kp: null, sfi: null, muf: null, haveData:false,
+  overrides: {}, // key -> 'open'|'closed'|'auto'
+  selected: null
+};
 
-    const logEl = document.getElementById('log');
-    const apiStatus = document.getElementById('apiStatus');
+// Build UI
+const bandsDiv = document.getElementById('bands');
+bands.forEach(b=>{
+  const el = document.createElement('div'); el.className='band'; el.id='band-'+b.key;
+  el.innerHTML = `<div class="name">${b.name}</div><div class="state">--</div>`;
+  el.addEventListener('click', ()=> selectBand(b.key));
+  bandsDiv.appendChild(el);
+});
 
-    function log(msg){ const t=new Date().toISOString(); logEl.innerHTML=`[${t}] ${msg}\n` + logEl.innerHTML; }
+function selectBand(key){ state.selected = key; document.getElementById('selectedBand').innerText = 'Selected: '+key; }
 
-    async function fetchJson(url){ try{ const r=await fetch(url,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); }catch(e){ log('Fetch error '+url+': '+e.message); throw e; }}
+// Manual override buttons
+document.getElementById('forceOpen').addEventListener('click', ()=>{ if(!state.selected) return alert('Select a band'); state.overrides[state.selected]='open'; log('Override '+state.selected+' -> open'); renderBands(); });
+document.getElementById('forceClosed').addEventListener('click', ()=>{ if(!state.selected) return alert('Select a band'); state.overrides[state.selected]='closed'; log('Override '+state.selected+' -> closed'); renderBands(); });
+document.getElementById('forceAuto').addEventListener('click', ()=>{ if(!state.selected) return alert('Select a band'); delete state.overrides[state.selected]; log('Override '+state.selected+' -> auto'); renderBands(); });
 
-    function decideOpen(sfi,kp){
-      const states={};
-      if(sfi>=120 && kp<=4){ states['10']=true; states['15']=true; states['20']=true; }
-      else if(sfi>=90 && kp<=4){ states['20']=true; states['15']=false; states['10']=false; }
-      else { states['10']=false; states['15']=false; states['20']=false; }
-      if(kp>=6){ states['40']=false; states['80']=false; }
-      else{ states['40']=true; states['80']=true; }
-      states['160']=(kp<=3 && sfi<120);
-      // assume 60m/30m/17m/12m/6m/4m/2m/70cm open if kp<=5
-      ['60','30','17','12','6','4','2','70cm'].forEach(k=>states[k]=kp<=5);
-      return states;
+// Logging
+const logEl = document.getElementById('log'); function log(msg){ const t=new Date().toISOString(); logEl.innerText = `[${t}] ${msg}
+` + logEl.innerText; }
+
+// Fetch helpers
+async function fetchJson(url){ try{ const r=await fetch(url,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); }catch(e){ log('Fetch error '+url+': '+e.message); return null; }}
+
+// Heuristics
+function sfiTier(sfi){ if(sfi>=121) return 'high'; if(sfi>=70) return 'moderate'; return 'low'; }
+
+// MUF estimation for given QTH (jn23IU ~ lat 43.5 N). We'll use a simple empirical model:
+// MUF_est (MHz) = base + alpha * ln(SFI+10) * cos(lat)
+function estimateMUF(sfi, lat=43.5){ if(!Number.isFinite(sfi)) return null; const base = 5; const alpha = 10; const muf = base + alpha * Math.log(sfi + 10) * Math.cos(lat * Math.PI/180); return Math.max(1, Math.round(muf*10)/10); }
+
+function decideOpen(sfi,kp,lat){ // returns map key->score (0..1) and boolean
+  const scores = {};
+  const muf = estimateMUF(sfi, lat);
+  state.muf = muf;
+  // Kp effect: if stormy, reduce high-band scores
+  const kpPenalty = (kp>=8)?0.0:(kp>=6?0.3:(kp>=5?0.6:1.0));
+
+  bands.forEach(b=>{
+    let score = 0.0;
+    // base by band family
+    if(b.band==='LF') score = (kp<=5?0.6:0.3);
+    else if(b.band==='HF'){
+      // favour bands below MUF and night/day logic (approx based on hour)
+      // approximate band center frequency in MHz from name where possible
+      const freq = parseBandFreq(b.name);
+      if(freq && muf){ score = Math.max(0, 1 - Math.abs(freq - muf)/Math.max(1,muf)); }
+      else score = 0.4;
+      // nighttime benefit for 80/40
+      const hour = new Date().getHours(); if(b.name==='80m' || b.name==='40m'){ if(hour<7 || hour>19) score = Math.max(score,0.7); }
+      score *= kpPenalty;
     }
-
-    let audioCtx=null;
-    function ensureAudioContext(){
-      if(audioCtx) return audioCtx;
-      try{ const AC=window.AudioContext||window.webkitAudioContext; if(!AC){ log('Web Audio API not supported'); return null; } audioCtx=new AC(); return audioCtx; }
-      catch(e){ log('Failed to create AudioContext: '+e.message); return null; }
+    else if(b.band==='VHF' || b.band==='UHF'){
+      // VHF/UHF often depend on sporadic-E, not modeled; tie to SFI moderately
+      const tier = sfiTier(sfi);
+      score = (tier==='high'?0.7:(tier==='moderate'?0.5:0.2));
     }
+    // clamp
+    score = Math.max(0, Math.min(1, score));
+    scores[b.key] = score;
+  });
+  return scores;
+}
 
-    function playBeep(durationMs=350,frequency=880){
-      const ctx=ensureAudioContext(); if(!ctx){ log('No audio'); return; }
-      try{
-        const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=frequency;
-        g.gain.value=0.0001; o.connect(g); g.connect(ctx.destination);
-        const now=ctx.currentTime; g.gain.setValueAtTime(0.0001,now); g.gain.exponentialRampToValueAtTime(0.2,now+0.02);
-        o.start(now); g.gain.exponentialRampToValueAtTime(0.0001,now+durationMs/1000); o.stop(now+durationMs/1000+0.05);
-      }catch(e){ log('playBeep error: '+e.message); }
+function parseBandFreq(name){ // crude mapping from name to MHz
+  const map = {'160m':1.9,'80m':3.7,'60m':5.3,'40m':7.1,'30m':10.1,'20m':14.2,'17m':18.1,'15m':21.2,'12m':24.9,'10m':28.4,'6m':50.2,'4m':70.2,'2m':144.3,'70cm':432.2,'23cm':1296,'136k':0.136,'472k':0.472};
+  return map[name]||null;
+}
+
+// Color gradient helper
+function scoreToColor(score){ // 0..1 -> red->yellow->green
+  const r = Math.round(255*(1-score));
+  const g = Math.round(255*score);
+  // mix with yellow in middle
+  if(score<0.5){ // red->yellow
+    const t = score*2; return `rgb(${255},${Math.round(200*t+55)},0)`; }
+  else { const t=(score-0.5)*2; return `rgb(${Math.round(200*(1-t)+55)},${255},${Math.round(0*(1-t)+55)})`; }
+}
+
+// Render bands
+function renderBands(scores){
+  bands.forEach(b=>{
+    const el = document.getElementById('band-'+b.key);
+    const stateEl = el.querySelector('.state');
+    const override = state.overrides[b.key];
+    let score = scores && scores[b.key]!==undefined ? scores[b.key] : 0;
+    // apply override
+    if(override==='open'){ score = 1; }
+    else if(override==='closed'){ score = 0; }
+    // set color and text
+    el.style.background = `linear-gradient(180deg, rgba(255,255,255,0.02), ${hexify(scoreToColor(score))})`;
+    stateEl.innerText = override ? (`${override.toUpperCase()}`) : (score>0.66? 'Likely open' : (score>0.33? 'Possible' : 'Closed'));
+    // border highlight
+    el.style.borderColor = score>0.66? '#00ff99' : (score>0.33? '#ffd54d' : 'rgba(255,255,255,0.04)');
+  });
+}
+
+function hexify(rgb){ // accept rgb(r,g,b) string -> rgba hex-ish fallback
+  // if rgb string, return as-is for CSS
+  if(typeof rgb === 'string' && rgb.startsWith('rgb')) return rgb;
+  return rgb;
+}
+
+// Audio alert
+let audioCtx=null; function ensureAudioContext(){ if(audioCtx) return audioCtx; try{ const AC=window.AudioContext||window.webkitAudioContext; if(!AC){ log('Web Audio API not supported'); return null; } audioCtx=new AC(); return audioCtx;}catch(e){ log('AudioCtx fail: '+e.message); return null; }}
+function playBeep(){ const ctx=ensureAudioContext(); if(!ctx) return; try{ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.value=0.0001; o.connect(g); g.connect(ctx.destination); const now=ctx.currentTime; g.gain.setValueAtTime(0.0001,now); g.gain.exponentialRampToValueAtTime(0.2,now+0.02); o.start(now); g.gain.exponentialRampToValueAtTime(0.0001,now+0.35); o.stop(now+0.4);}catch(e){ log('beep error: '+e.message); }}
+
+let prevScores = {};
+
+async function update(){
+  const kpJson = await fetchJson(endpoints.planetaryK);
+  const sfiJson = await fetchJson(endpoints.solarRadio);
+  const haveData = Array.isArray(kpJson) && kpJson.length && Array.isArray(sfiJson) && sfiJson.length;
+  let kp= null, sfi=null;
+  if(haveData){ const latestK = kpJson[kpJson.length-1]; kp = latestK && (latestK.kp || latestK.kp_est || latestK.value || 0); const latestS = sfiJson[sfiJson.length-1]; sfi = latestS && (latestS.solar_flux_10cm || latestS['f107'] || latestS['sfu'] || latestS['observed_value'] || latestS['flux'] || 0); }
+  state.kp = kp; state.sfi = sfi; state.haveData = haveData;
+  const lat = Number(document.getElementById('lat').value) || 43.5;
+  const scores = decideOpen(sfi,kp,lat);
+  document.getElementById('indices').innerText = haveData? `Kp: ${kp} SFI: ${sfi} MUF≈${state.muf||'--'} MHz` : 'No data';
+  document.getElementById('solarData').innerText = haveData? `SFI: ${sfi}  Kp: ${kp}  MUF≈${state.muf||'--'} MHz` : 'SFI/Kp: --';
+  renderBands(scores);
+
+  // alarms: if a band newly becomes likely open and autoAlarm is set, alert
+  bands.forEach(b=>{
+    const key=b.key; const score = scores[key]||0; const prev = prevScores[key]||0;
+    const alarmEnabled = true; // per-tile alarm (could add checkboxes later)
+    if(score>0.66 && prev<=0.66 && document.getElementById('autoAlarm').checked){
+      // trigger
+      if(Notification && Notification.permission==='granted'){
+        try{ new Notification('Band open', {body:`${b.name} likely open (JN23IU)`}); }catch(e){ }
+      }
+      playBeep(); log('Auto alarm: '+b.name+' open');
     }
+    prevScores[key]=score;
+  });
+}
 
-    async function triggerAlarm(bandName){
-      if(Notification && Notification.permission==='granted'){ try{ new Notification('Band Open', {body:`${bandName} looks open!`}); }catch(e){ log('Notification failed: '+e.message); } }
-      const ctx=ensureAudioContext(); if(ctx && ctx.state==='suspended'){ ctx.resume().catch(()=>{}); }
-      try{ playBeep(); }catch(e){ log('Alarm sound failed: '+e.message); }
-      log('Alarm triggered for '+bandName);
-    }
+// Map drawing: simple equirectangular canvas and day/night vertical band based on approximate subsolar longitude
+function drawMap(){ const c=document.getElementById('map'); c.width=c.clientWidth; c.height=c.clientHeight; const ctx=c.getContext('2d'); // sky
+  ctx.fillStyle='#07101a'; ctx.fillRect(0,0,c.width,c.height);
+  // longitudes across width
+  const now = new Date(); const utch = now.getUTCHours() + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600;
+  // approximate subsolar longitude: where local solar time == 12 -> longitude = (12 - UTC_hours)*15
+  const subsolarLng = (12 - utch) * 15; // degrees
+  // draw day band +-90 degrees from subsolarLng
+  for(let x=0;x<c.width;x++){ const lng = (x/c.width)*360 - 180; let d = Math.abs(normalizeAngle(lng - subsolarLng)); if(d>180) d = 360-d; if(d<=90){ // day
+      // brightness depending on distance
+      const t = 1 - (d/90); const g = Math.floor(40 + 120*t); ctx.fillStyle = `rgba(${g+10},${g+40},${g+80},0.12)`; ctx.fillRect(x,0,1,c.height);
+    } else { // night
+      const t = (d-90)/90; const b = Math.floor(8 + 20*(1-t)); ctx.fillStyle = `rgba(0,0,0,0.35)`; ctx.fillRect(x,0,1,c.height); }
+  }
+  // draw a simple equator line
+  ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.moveTo(0,c.height/2); ctx.lineTo(c.width,c.height/2); ctx.stroke();
+  // label subsolar longitude
+  ctx.fillStyle='#a8c0d8'; ctx.font='11px system-ui'; ctx.fillText('Subsolar ≈ '+Math.round(subsolarLng)+'°',6,14);
+}
+function normalizeAngle(a){ return ((a+540)%360)-180; }
 
-    let prevOpen={}; bands.forEach(b=>prevOpen[b.key]=false);
+// Local time updater
+function updateLocalTime(){ const now=new Date(); document.getElementById('localTime').innerText = 'Local: '+now.toLocaleString(); }
 
-    async function update(){
-      try{
-        apiStatus.textContent='Fetching...';
-        const [kpJson,sfiJson]=await Promise.all([fetchJson(endpoints.planetaryK),fetchJson(endpoints.solarRadio)]);
-        const latestK=Array.isArray(kpJson)&&kpJson.length?kpJson[kpJson.length-1]:null;
-        const kpValue=latestK?(latestK.kp||latestK.kp_est||latestK.value||0):0;
-        const latestS=Array.isArray(sfiJson)&&sfiJson.length?sfiJson[sfiJson.length-1]:null;
-        const sfiValue=latestS?(latestS.solar_flux_10cm||latestS['f107']||latestS['sfu']||latestS['observed_value']||latestS['flux']||0):0;
-        apiStatus.textContent=`OK — Kp: ${kpValue}, SFI: ${sfiValue}`;
-        document.getElementById('indices').innerHTML=`Kp: <strong>${kpValue}</strong><br/>SFI: <strong>${sfiValue}</strong><br/>Updated: ${new Date().toLocaleString()}`;
-        const openStates=decideOpen(Number(sfiValue),Number(kpValue));
-        bands.forEach(b=>{
-          const el=document.getElementById('band-'+b.key);
-          const stateEl=document.getElementById(`band-${b.key}-state`);
-          const isOpen=!!openStates[b.key];
-          el.className='band '+(isOpen?'open':'closed');
-          stateEl.textContent=isOpen?'Likely open':'Likely closed';
-          const alarmCheckbox=el.querySelector('.alarmToggle');
-          const alarmEnabled=alarmCheckbox&&alarmCheckbox.checked;
-          if(isOpen && alarmEnabled && !prevOpen[b.key] && document.getElementById('autoAlarm').checked){ triggerAlarm(b.name); }
-          prevOpen[b.key]=isOpen;
-        });
-      }catch(e){ apiStatus.textContent='Error fetching data'; log('Update error: '+(e&&e.message?e.message:String(e))); }
-    }
+// Notifications permission toggle
+document.getElementById('notifyPermission').addEventListener('change', async ev=>{ if(ev.target.checked){ try{ const p = await Notification.requestPermission(); log('Notification permission: '+p); }catch(e){ log('Notification request failed'); } } });
 
-    update();
-    let timer=null;
-    function startTimer(){ const s=Math.max(10,Number(document.getElementById('interval').value||60)); if(timer)clearInterval(timer); timer=setInterval(update,s*1000); }
-    startTimer();
-    document.getElementById('interval').addEventListener('change',startTimer);
-    document.getElementById('autoAlarm').addEventListener('change',()=>{ log('Auto alarm '+(document.getElementById('autoAlarm').checked?'enabled':'disabled')); });
-    document.getElementById('notifyPermission').addEventListener('change',async(ev)=>{ if(ev.target.checked){ try{ const p=await Notification.requestPermission(); log('Notification permission: '+p); }catch(e){ log('Notification request failed: '+e.message); } }else{ log('Notifications & audio not requested'); } });
-    document.getElementById('testAlarm').addEventListener('click',()=>{ triggerAlarm('TEST'); });
-    document.querySelectorAll('.alarmToggle').forEach(cb=>{ cb.addEventListener('change',()=>{ log('Alarm for '+cb.dataset.key+' set to '+cb.checked); }); });
-    window.addEventListener('error',e=>{ log('Error: '+(e&&e.message?e.message:String(e))); });
-    if(typeof Notification==='undefined'){ document.getElementById('notifyPermission').disabled=true; document.getElementById('notifyPermission').parentElement.insertAdjacentHTML('beforeend','<span class="muted"> (Notifications not supported)</span>'); log('Notifications not supported'); }
-  </script>
+// Init
+drawMap(); updateLocalTime(); setInterval(drawMap, 60*1000); setInterval(updateLocalTime, 1000);
+let timer = null; function startTimer(){ const s = Math.max(10, Number(document.getElementById('interval').value||60)); if(timer) clearInterval(timer); timer=setInterval(update,s*1000); }
+startTimer(); document.getElementById('interval').addEventListener('change', startTimer);
+update();
+
+// Resize map on window resize
+window.addEventListener('resize', ()=>{ drawMap(); });
+
+</script>
 </body>
 </html>
